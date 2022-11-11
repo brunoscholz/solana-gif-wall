@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
 
 import { Connection, PublicKey, clusterApiUrl } from '@solana/web3.js'
-import { Program, AnchorProvider, web3 } from '@project-serum/anchor'
+import { Program, AnchorProvider, web3, BN } from '@project-serum/anchor'
+
+import kp from './keypair.json'
 
 import twitterLogo from './assets/twitter-logo.svg'
 import './App.css'
@@ -10,15 +12,21 @@ import './App.css'
 const TWITTER_HANDLE = '_buildspace'
 const TWITTER_LINK = `https://twitter.com/${TWITTER_HANDLE}`
 
-const TEST_GIFS = [
-  'https://media0.giphy.com/media/Mag2rNk7lrIaq6ToOL/giphy.gif?cid=ecf05e47t277qapjqgcufh7c8zquhs1mqdc9jcarixjb4eey&rid=giphy.gif&ct=g',
-  'https://media1.giphy.com/media/BUbMgQBShZOcMPohgn/giphy.gif?cid=ecf05e475htuepmay1f0q92ycxrndu6geni33q1o4r8tr2kn&rid=giphy.gif&ct=g',
-  'https://media4.giphy.com/media/YKFR0dauxYEzJA8J6U/giphy.gif?cid=ecf05e475htuepmay1f0q92ycxrndu6geni33q1o4r8tr2kn&rid=giphy.gif&ct=g',
-  'https://media4.giphy.com/media/BdghqxNFV4efm/giphy.gif?cid=ecf05e477f3czwd010893bb98sw0yj88qxshgq4y2vadg39w&rid=giphy.gif&ct=g'
-]
+// const TEST_GIFS = [
+//   'https://media0.giphy.com/media/Mag2rNk7lrIaq6ToOL/giphy.gif?cid=ecf05e47t277qapjqgcufh7c8zquhs1mqdc9jcarixjb4eey&rid=giphy.gif&ct=g',
+//   'https://media1.giphy.com/media/BUbMgQBShZOcMPohgn/giphy.gif?cid=ecf05e475htuepmay1f0q92ycxrndu6geni33q1o4r8tr2kn&rid=giphy.gif&ct=g',
+//   'https://media4.giphy.com/media/YKFR0dauxYEzJA8J6U/giphy.gif?cid=ecf05e475htuepmay1f0q92ycxrndu6geni33q1o4r8tr2kn&rid=giphy.gif&ct=g',
+//   'https://media4.giphy.com/media/BdghqxNFV4efm/giphy.gif?cid=ecf05e477f3czwd010893bb98sw0yj88qxshgq4y2vadg39w&rid=giphy.gif&ct=g'
+// ]
 
-const { SystemProgram, Keypair } = web3
-let baseAccount = Keypair.generate()
+const { SystemProgram } = web3
+
+const arr = Object.values(kp._keypair.secretKey)
+const secret = new Uint8Array(arr)
+const baseAccount = web3.Keypair.fromSecretKey(secret)
+console.log(baseAccount.publicKey.toString())
+// let baseAccount = web3.Keypair.generate();
+
 const programID = new PublicKey('2PDwSrZk8h2D371iGmzcvdFctoF5jD6BuwiqjKeAWaua')
 const network = clusterApiUrl('devnet')
 const opts = {
@@ -64,12 +72,46 @@ const App = () => {
   }
 
   const sendGif = async () => {
-    if (inputValue.length > 0) {
-      console.log('Gif link:', inputValue)
-      setGifList([...gifList, inputValue])
-      setInputValue('')
-    } else {
-      console.log('Empty input. Try again.')
+    if (inputValue.length === 0) {
+      console.log('No gif link given!')
+      return
+    }
+    setInputValue('')
+    console.log('Gif link:', inputValue)
+    try {
+      const provider = getProvider()
+      const program = await getProgram()
+
+      await program.rpc.addGif(inputValue, {
+        accounts: {
+          baseAccount: baseAccount.publicKey,
+          user: provider.wallet.publicKey
+        }
+      })
+      console.log('GIF successfully sent to program', inputValue)
+
+      await getGifList()
+    } catch (error) {
+      console.log('Error sending GIF:', error)
+    }
+  }
+
+  const upvote = async (ev, id) => {
+    ev.preventDefault()
+    try {
+      const program = await getProgram()
+
+      const value = new BN(id)
+      await program.rpc.addVote(value, {
+        accounts: {
+          baseAccount: baseAccount.publicKey
+        }
+      })
+      console.log('Upvote on #', id, ', sent to program')
+
+      await getGifList()
+    } catch (error) {
+      console.log('Error sending GIF:', error)
     }
   }
 
@@ -96,15 +138,76 @@ const App = () => {
               Submit
             </button>
           </form>
-          <div className='gif-grid'>
-            {gifList.map(gif => (
-              <div className='gif-item' key={gif}>
-                <img src={gif} alt={gif} />
+
+          <div className='cards'>
+            {/* <div className='gif-grid'> */}
+            {gifList.map((gif, idx) => (
+              <div className='card' key={idx} onClick={showCard}>
+                <div className='card__image-holder' style={{ backgroundImage: `url(${gif.gifLink})` }}>
+                  {/* <img className='card__image' src={gif.gifLink} alt={gif.gifLink} /> */}
+                </div>
+                <div className='card-title'>
+                  <a href='/#' className='toggle-info btn'>
+                    <span className='left'></span>
+                    <span className='right'></span>
+                  </a>
+                  <h2>
+                    Upvotes
+                    <small>{gif.upvoteCount.toString()}</small>
+                  </h2>
+                </div>
+                <div className='card-flap flap1'>
+                  <div className='card-description'>
+                    posted by: <em>{gif.userAddress.toString()}</em>
+                  </div>
+                  <div className='card-flap flap2'>
+                    <div className='card-actions'>
+                      <a href='/#' className='btn' onClick={ev => upvote(ev, idx)}>
+                        Upvote
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )
+    }
+  }
+
+  var zindex = 10
+  const showCard = ev => {
+    ev.preventDefault()
+    var isShowing = false
+
+    const card = ev.target.closest('div.card')
+    if (card.classList.contains('show')) {
+      isShowing = true
+    }
+
+    const wrapper = document.querySelector('div.cards')
+
+    if (wrapper.classList.contains('showing')) {
+      // a card is already in view
+      const showOff = document.querySelector('div.card.show')
+      showOff.classList.remove('show')
+
+      if (isShowing) {
+        // this card was showing - reset the grid
+        wrapper.classList.remove('showing')
+      } else {
+        // this card isn't showing - get in with it
+        card.classList.add('show')
+        card.style.zIndex = zindex
+      }
+      zindex++
+    } else {
+      // no cards in view
+      wrapper.classList.add('showing')
+      card.classList.add('show')
+      card.style.zIndex = zindex
+      zindex++
     }
   }
 
@@ -168,6 +271,7 @@ const App = () => {
       console.log('Fetching GIF list...')
       getGifList()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress])
 
   return (
